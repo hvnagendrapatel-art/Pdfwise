@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<!--
+  Pagewise – every file to PDF, and back again.
+  One self-contained file. Everything runs in your browser: files are never uploaded.
+  Open it by double-clicking (internet needed once for the libraries below).
+
+  Parts: <style> look  |  <body> page  |  <script> 1 helpers, 2 tools, 3 interface
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pagewise – every file to PDF and back</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Open-source libraries: pdf-lib (edit/create PDFs), PDF.js (read/render), JSZip, mammoth (Word files) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+/* ---- Colour tokens (light default, dark follows the device) ---- */
+:root{--bg:#f6f7fb;--card:#fff;--ink:#0b1020;--muted:#5d6482;--edge:#0b1020;--pop:#0b1020;--accent:#3b3bff;--hi:#ffd23f;--err:#c81e3a;--soft:#eceefa}
+@media (prefers-color-scheme:dark){:root{--bg:#0d0f1a;--card:#171a2b;--ink:#f1f2fb;--muted:#9aa0c4;--edge:#4a5088;--pop:#3b3bff;--accent:#8a8aff;--err:#ff7a90;--soft:#20243c}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Instrument Sans",system-ui,sans-serif;
+ background-image:radial-gradient(var(--edge) .6px,transparent .6px);background-size:22px 22px;background-attachment:fixed}
+body::before{content:"";position:fixed;inset:0;background:var(--bg);opacity:.93;z-index:-1}
+.top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:18px clamp(16px,4vw,48px)}
+.brand{display:flex;align-items:center;gap:10px;font:800 22px "Bricolage Grotesque",sans-serif}
+.logo{width:36px;height:36px;display:grid;place-items:center;background:var(--hi);color:#0b1020;border:2px solid var(--edge);border-radius:10px;box-shadow:3px 3px 0 var(--pop)}
+.badge{padding:6px 14px;border:2px solid var(--edge);border-radius:99px;background:var(--card);font-size:13px;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:10px clamp(16px,4vw,48px) 50px}
+h1{font:800 clamp(38px,7vw,72px)/1 "Bricolage Grotesque",sans-serif;letter-spacing:-.03em;margin:22px 0 14px;text-shadow:4px 4px 0 var(--hi)}
+@media (prefers-color-scheme:dark){h1{text-shadow:4px 4px 0 var(--pop)}}
+.lead{color:var(--muted);max-width:60ch;margin:0 0 20px;font-size:16px}
+/* ---- Filter chips and tool cards ---- */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.chip{padding:8px 16px;border:2px solid var(--edge);border-radius:99px;background:var(--card);color:var(--ink);font:600 14px inherit;font-family:inherit;cursor:pointer}
+.chip.on{background:var(--ink);color:var(--bg)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.card{display:flex;flex-direction:column;gap:6px;text-align:left;padding:18px;border:2px solid var(--edge);border-radius:16px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer;box-shadow:5px 5px 0 var(--pop);transition:transform .12s,box-shadow .12s}
+.card:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--pop)}
+.card b{font:700 17px "Bricolage Grotesque",sans-serif}
+.card small{color:var(--muted);font-size:13px}
+.ico{width:46px;height:46px;display:grid;place-items:center;border:2px solid var(--edge);border-radius:12px;font-size:22px;margin-bottom:6px}
+.c-to{background:#ffd23f}.c-from{background:#8fb4ff}.c-edit{background:#ff9ec4}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.carry{padding:10px 14px;margin-bottom:16px;border:2px dashed var(--accent);border-radius:12px;font-weight:600}
+/* ---- Workspace ---- */
+.link{background:none;border:0;color:var(--accent);font:600 15px inherit;font-family:inherit;cursor:pointer;padding:0;margin-bottom:8px}
+h2{font:800 clamp(28px,5vw,44px)/1.05 "Bricolage Grotesque",sans-serif;margin:4px 0 8px}
+.drop{display:grid;place-items:center;gap:4px;min-height:150px;padding:20px;text-align:center;border:3px dashed var(--edge);border-radius:18px;background:var(--card);cursor:pointer}
+.drop.over{background:var(--hi);color:#0b1020}
+.files{list-style:none;margin:14px 0;padding:0;display:grid;gap:8px}
+.files li{display:flex;align-items:center;gap:8px;padding:8px 12px;border:2px solid var(--edge);border-radius:12px;background:var(--card)}
+.files .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.files small{color:var(--muted)}
+.mini{padding:4px 10px;border:2px solid var(--edge);border-radius:8px;background:var(--soft);color:var(--ink);font:600 13px inherit;font-family:inherit;cursor:pointer}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0}
+.opts label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
+.opts .chk{display:flex;align-items:center;gap:8px;color:var(--ink)}
+input[type=text],input[type=number],select{width:100%;padding:10px 12px;border:2px solid var(--edge);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
+.go{padding:14px 28px;border:2px solid var(--edge);border-radius:12px;background:var(--accent);color:#fff;font:700 16px "Bricolage Grotesque",sans-serif;cursor:pointer;box-shadow:4px 4px 0 var(--pop)}
+.go:disabled{opacity:.6;cursor:wait}
+#prog{margin-left:12px;color:var(--muted);font-weight:600}
+.out{margin-top:20px;padding:16px;border:2px solid var(--edge);border-radius:16px;background:var(--card);box-shadow:5px 5px 0 var(--hi)}
+.out .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0}
+.out .nm{flex:1;min-width:140px;font-weight:600}
+.dl{padding:8px 16px;border:2px solid var(--edge);border-radius:10px;background:var(--hi);color:#0b1020;font:700 14px inherit;font-family:inherit;cursor:pointer}
+.err{color:var(--err);font-weight:600}
+footer{padding:0 clamp(16px,4vw,48px) 30px;color:var(--muted);font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">P</span>Pdfwise</div>
+  <span class="badge">🔒 Files never leave your device</span>
+</header>
+
+<main>
+  <!-- Home: pick a tool -->
+  <section id="home">
+    <h1>Every file to PDF.<br>And back again.</h1>
+    <p class="lead">Convert, merge, split, compress and stamp PDFs. Finish one job and send the result straight into the next tool.</p>
+    <div id="carry" class="carry" hidden></div>
+    <div id="chips" class="chips"></div>
+    <div id="grid" class="grid"></div>
+  </section>
+
+  <!-- Workspace: drop files, set options, run -->
+  <section id="work" hidden>
+    <button id="back" class="link">← All tools</button>
+    <h2 id="wt"></h2>
+    <p id="wd" class="lead"></p>
+    <div id="drop" class="drop" tabindex="0"><b>Drop files here</b><span>or click to browse</span><input type="file" id="file" hidden></div>
+    <ul id="files" class="files"></ul>
+    <div id="opts" class="opts"></div>
+    <button id="run" class="go">Convert</button><span id="prog"></span>
+    <div id="result"></div>
+  </section>
+</main>
+<footer>Runs on open-source libraries in your browser. Word → PDF and PDF → Word keep text and headings, not complex layouts. Text outside Western alphabets may show as “?” in generated PDFs.</footer>
+
+<script>
+'use strict';
+const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+/* ================= 1. Helpers ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const kb = n => n > 1048576 ? (n / 1048576).toFixed(2) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const ext = f => f.name.split('.').pop().toLowerCase();
+const base = f => f.name.replace(/\.[^.]+$/, '');
+const pdfBlob = bytes => new Blob([bytes], { type: 'application/pdf' });
+const blobOf = (canvas, type, q) => new Promise(r => canvas.toBlob(r, type, q));
+const loadPdf = async f => PDFDocument.load(await f.arrayBuffer(), { ignoreEncryption: true });   // edit with pdf-lib
+const getDoc = async f => pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise; // read with PDF.js
+
+// Draw one PDF.js page onto a white canvas
+async function pageCanvas(page, scale) {
+  const vp = page.getViewport({ scale }), c = document.createElement('canvas'), ctx = c.getContext('2d');
+  c.width = vp.width; c.height = vp.height; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return c;
+}
+
+// "1-3, 5, 8-" -> [0,1,2,4,7,...]; blank = every page
+function ranges(s, max) {
+  s = (s || '').trim();
+  if (!s) return [...Array(max).keys()];
+  const out = [];
+  for (const part of s.split(',')) {
+    const m = part.trim().match(/^(\d*)\s*(?:-\s*(\d*))?$/);
+    if (!m || (!m[1] && !m[2])) throw new Error(`Bad page range: "${part.trim()}"`);
+    const a = m[1] ? +m[1] : 1, b = part.includes('-') ? (m[2] ? +m[2] : max) : a;
+    if (a < 1 || b > max || a > b) throw new Error(`Pages must be between 1 and ${max} (got "${part.trim()}")`);
+    for (let i = a; i <= b; i++) out.push(i - 1);
+  }
+  return out;
+}
+
+// Text -> PDF: layout blocks [{text,size,bold}] flow onto A4 pages
+const clean = t => String(t).replace(/\t/g, '  ').replace(/[^\x20-\x7E\xA0-\xFF]/g, '?'); // standard fonts are Latin-only
+function wrap(t, font, size, max) {
+  const lines = []; let cur = '';
+  for (let w of t.split(' ')) {
+    while (font.widthOfTextAtSize(w, size) > max) {            // chop words wider than the page
+      let k = w.length; while (k > 1 && font.widthOfTextAtSize(w.slice(0, k), size) > max) k--;
+      if (cur) { lines.push(cur); cur = ''; }
+      lines.push(w.slice(0, k)); w = w.slice(k);
+    }
+    const test = cur ? cur + ' ' + w : w;
+    if (font.widthOfTextAtSize(test, size) > max && cur) { lines.push(cur); cur = w; } else cur = test;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+async function blocksToPdf(blocks) {
+  const pdf = await PDFDocument.create(), reg = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const W = 595, H = 842, M = 56; let page = pdf.addPage([W, H]), y = H - M;
+  for (const b of blocks) {
+    const font = b.bold ? bold : reg, lh = b.size * 1.4, t = clean(b.text);
+    if (!t.trim()) { y -= lh / 2; continue; }
+    if (b.size > 12) y -= b.size * .6;
+    for (const line of wrap(t, font, b.size, W - 2 * M)) {
+      if (y - lh < M) { page = pdf.addPage([W, H]); y = H - M; }
+      y -= lh; page.drawText(line, { x: M, y, size: b.size, font });
+    }
+  }
+  return pdfBlob(await pdf.save());
+}
+function htmlBlocks(html) {                                       // HTML -> layout blocks
+  const doc = new DOMParser().parseFromString(html, 'text/html'), out = [];
+  doc.body.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,pre,tr').forEach(el => {
+    if (el.tagName === 'P' && el.closest('li,td,th')) return;
+    const text = el.tagName === 'TR' ? [...el.cells].map(c => c.textContent.trim()).join('  |  ') : el.textContent.trim();
+    if (!text) return;
+    const h = /^H(\d)$/.exec(el.tagName);
+    out.push({ text: (el.tagName === 'LI' ? '• ' : '') + text, size: h ? [0, 22, 18, 15, 13, 12, 11][+h[1]] : 11, bold: !!h }, { text: '', size: 4 });
+  });
+  return out;
+}
+function textBlocks(txt, e) {                                     // .txt / .md / .csv -> layout blocks
+  if (/^html?$/.test(e)) return htmlBlocks(txt);
+  return txt.split(/\r?\n/).flatMap(l => {
+    const m = e === 'md' && /^(#{1,3})\s+(.*)/.exec(l);
+    return m ? [{ text: '', size: 6 }, { text: m[2], size: [0, 22, 18, 15][m[1].length], bold: true }] : [{ text: l, size: 11 }];
+  });
+}
+async function zipOf(items) {
+  const z = new JSZip(); items.forEach(i => z.file(i.name, i.blob));
+  return z.generateAsync({ type: 'blob' });
+}
+async function pdfText(f, p) {                                    // one string per page
+  const doc = await getDoc(f), pages = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    p(i, doc.numPages);
+    const tc = await (await doc.getPage(i)).getTextContent();
+    pages.push(tc.items.map(t => t.str + (t.hasEOL ? '\n' : '')).join('').replace(/[ \t]+\n/g, '\n'));
+  }
+  return pages;
+}
+
+/* ================= 2. Tools =================
+   cat: to / from / edit.  run(files, options, progress) returns [{name, blob}] (+ optional .note) */
+const TOOLS = [
+  { id: 'img2pdf', cat: 'to', icon: '🖼️', name: 'Images to PDF', desc: 'JPG, PNG, WebP and more in one PDF', accept: '.jpg,.jpeg,.png,.webp,.gif,.bmp', multi: 1,
+    opts: [{ k: 'size', label: 'Page size', type: 'select', def: 'fit', choices: [['fit', 'Fit to each image'], ['a4', 'A4 with margins']] }],
+    async run(fs, o, p) {
+      const pdf = await PDFDocument.create();
+      for (const [n, f] of fs.entries()) {
+        p(n + 1, fs.length); let img; const e = ext(f);
+        if (e === 'jpg' || e === 'jpeg') img = await pdf.embedJpg(await f.arrayBuffer());
+        else if (e === 'png') img = await pdf.embedPng(await f.arrayBuffer());
+        else { const bm = await createImageBitmap(f), c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; c.getContext('2d').drawImage(bm, 0, 0); img = await pdf.embedPng(await (await blobOf(c, 'image/png')).arrayBuffer()); }
+        if (o.size === 'fit') pdf.addPage([img.width, img.height]).drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+        else { const s = Math.min(523 / img.width, 770 / img.height, 1), w = img.width * s, h = img.height * s; pdf.addPage([595, 842]).drawImage(img, { x: (595 - w) / 2, y: (842 - h) / 2, width: w, height: h }); }
+      }
+      return [{ name: 'images.pdf', blob: pdfBlob(await pdf.save()) }];
+    } },
+  { id: 'word2pdf', cat: 'to', icon: '📝', name: 'Word to PDF', desc: '.docx documents to PDF (text and headings)', accept: '.docx',
+    async run([f]) {
+      const { value } = await mammoth.convertToHtml({ arrayBuffer: await f.arrayBuffer() });
+      return [{ name: base(f) + '.pdf', blob: await blocksToPdf(htmlBlocks(value)) }];
+    } },
+  { id: 'text2pdf', cat: 'to', icon: '📄', name: 'Text & web to PDF', desc: 'TXT, Markdown, CSV, HTML and JSON files', accept: '.txt,.md,.csv,.html,.htm,.json,.log', multi: 1,
+    async run(fs) {
+      let blocks = []; for (const f of fs) blocks = blocks.concat(textBlocks(await f.text(), ext(f)), [{ text: '', size: 11 }]);
+      return [{ name: (fs.length > 1 ? 'combined' : base(fs[0])) + '.pdf', blob: await blocksToPdf(blocks) }];
+    } },
+  { id: 'pdf2img', cat: 'from', icon: '🏞️', name: 'PDF to images', desc: 'Every page as PNG or JPG, zipped', accept: '.pdf',
+    opts: [{ k: 'fmt', label: 'Format', type: 'select', def: 'png', choices: [['png', 'PNG'], ['jpg', 'JPG']] }, { k: 'scale', label: 'Sharpness', type: 'select', def: '2', choices: [['1', 'Standard'], ['2', 'High'], ['3', 'Very high']] }],
+    async run([f], o, p) {
+      const doc = await getDoc(f), items = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        p(i, doc.numPages); const c = await pageCanvas(await doc.getPage(i), +o.scale);
+        items.push({ name: `page-${String(i).padStart(3, '0')}.${o.fmt}`, blob: await blobOf(c, o.fmt === 'png' ? 'image/png' : 'image/jpeg', .92) });
+      }
+      return [{ name: base(f) + '_images.zip', blob: await zipOf(items) }];
+    } },
+  { id: 'pdf2word', cat: 'from', icon: '📘', name: 'PDF to Word', desc: 'Pull the text into an editable document', accept: '.pdf',
+    async run([f], o, p) {
+      const pages = await pdfText(f, p);
+      const body = pages.map((t, i) => (i ? '<br clear=all style="page-break-before:always">' : '') + t.split(/\n+/).filter(l => l.trim()).map(l => `<p style="font-family:Calibri;font-size:11pt">${esc(l)}</p>`).join('')).join('');
+      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body>${body}</body></html>`;
+      return [{ name: base(f) + '.doc', blob: new Blob(['\ufeff', html], { type: 'application/msword' }) }];
+    } },
+  { id: 'pdf2txt', cat: 'from', icon: '🔤', name: 'PDF to text', desc: 'Extract all text as a .txt file', accept: '.pdf',
+    async run([f], o, p) {
+      const pages = await pdfText(f, p);
+      return [{ name: base(f) + '.txt', blob: new Blob([pages.map((t, i) => `--- Page ${i + 1} ---\n${t}`).join('\n\n')], { type: 'text/plain' }) }];
+    } },
+  { id: 'merge', cat: 'edit', icon: '🧩', name: 'Merge PDFs', desc: 'Combine files in the order you set', accept: '.pdf', multi: 1, min: 2,
+    async run(fs, o, p) {
+      const out = await PDFDocument.create();
+      for (const [n, f] of fs.entries()) { p(n + 1, fs.length); const d = await loadPdf(f); (await out.copyPages(d, d.getPageIndices())).forEach(pg => out.addPage(pg)); }
+      return [{ name: 'merged.pdf', blob: pdfBlob(await out.save()) }];
+    } },
+  { id: 'split', cat: 'edit', icon: '✂️', name: 'Split PDF', desc: 'One file per page, or by page ranges', accept: '.pdf',
+    opts: [{ k: 'mode', label: 'Split', type: 'select', def: 'every', choices: [['every', 'Every page'], ['custom', 'Custom ranges']] }, { k: 'ranges', label: 'Ranges (one PDF per comma)', type: 'text', ph: 'e.g. 1-3, 4-6, 7' }],
+    async run([f], o) {
+      const src = await loadPdf(f), n = src.getPageCount();
+      const groups = o.mode === 'every' ? [...Array(n).keys()].map(i => [i]) : o.ranges.split(',').map(g => ranges(g, n));
+      const items = [];
+      for (const [k, g] of groups.entries()) { const out = await PDFDocument.create(); (await out.copyPages(src, g)).forEach(pg => out.addPage(pg)); items.push({ name: `${base(f)}_part${k + 1}.pdf`, blob: pdfBlob(await out.save()) }); }
+      return items.length === 1 ? items : [{ name: base(f) + '_split.zip', blob: await zipOf(items) }];
+    } },
+  { id: 'pages', cat: 'edit', icon: '🗂️', name: 'Organize pages', desc: 'Keep, remove or reverse pages', accept: '.pdf',
+    opts: [{ k: 'mode', label: 'Action', type: 'select', def: 'keep', choices: [['keep', 'Keep these pages'], ['remove', 'Remove these pages']] }, { k: 'pages', label: 'Pages', type: 'text', ph: 'e.g. 1-3, 5' }, { k: 'rev', label: 'Reverse the order', type: 'check' }],
+    async run([f], o) {
+      const src = await loadPdf(f), n = src.getPageCount(); let idx = ranges(o.pages, n);
+      if (o.mode === 'remove') { const s = new Set(idx); idx = [...Array(n).keys()].filter(i => !s.has(i)); }
+      if (!idx.length) throw new Error('No pages would be left.');
+      if (o.rev) idx.reverse();
+      const out = await PDFDocument.create(); (await out.copyPages(src, idx)).forEach(pg => out.addPage(pg));
+      return [{ name: base(f) + '_edited.pdf', blob: pdfBlob(await out.save()) }];
+    } },
+  { id: 'rotate', cat: 'edit', icon: '🔄', name: 'Rotate PDF', desc: 'Turn all or selected pages', accept: '.pdf',
+    opts: [{ k: 'angle', label: 'Rotate', type: 'select', def: '90', choices: [['90', '90° clockwise'], ['180', '180°'], ['270', '90° counter-clockwise']] }, { k: 'pages', label: 'Pages (blank = all)', type: 'text', ph: 'e.g. 2-4' }],
+    async run([f], o) {
+      const d = await loadPdf(f);
+      ranges(o.pages, d.getPageCount()).forEach(i => { const pg = d.getPage(i); pg.setRotation(degrees((pg.getRotation().angle + +o.angle) % 360)); });
+      return [{ name: base(f) + '_rotated.pdf', blob: pdfBlob(await d.save()) }];
+    } },
+  { id: 'stamp', cat: 'edit', icon: '💧', name: 'Watermark & page numbers', desc: 'Stamp text across pages, number them', accept: '.pdf',
+    opts: [{ k: 'text', label: 'Watermark text', type: 'text', ph: 'e.g. CONFIDENTIAL' }, { k: 'opacity', label: 'Watermark strength', type: 'select', def: '.2', choices: [['.12', 'Light'], ['.2', 'Medium'], ['.4', 'Strong']] }, { k: 'nums', label: 'Add page numbers', type: 'check' }],
+    async run([f], o) {
+      if (!o.text.trim() && !o.nums) throw new Error('Type a watermark or tick “Add page numbers”.');
+      const d = await loadPdf(f), font = await d.embedFont(StandardFonts.HelveticaBold), pages = d.getPages(), t = clean(o.text.trim());
+      pages.forEach((p, i) => {
+        const { width: w, height: h } = p.getSize();
+        if (t) {
+          const size = Math.min(110, Math.hypot(w, h) * .7 / (t.length * .6)), tw = font.widthOfTextAtSize(t, size), k = .7071;
+          p.drawText(t, { x: w / 2 - tw / 2 * k + size / 3 * k, y: h / 2 - tw / 2 * k - size / 3 * k, size, font, rotate: degrees(45), color: rgb(.8, .1, .1), opacity: +o.opacity });
+        }
+        if (o.nums) { const s = `${i + 1} / ${pages.length}`; p.drawText(s, { x: w / 2 - font.widthOfTextAtSize(s, 10) / 2, y: 22, size: 10, font, color: rgb(.3, .3, .3) }); }
+      });
+      return [{ name: base(f) + '_stamped.pdf', blob: pdfBlob(await d.save()) }];
+    } },
+  { id: 'compress', cat: 'edit', icon: '🗜️', name: 'Compress PDF', desc: 'Shrink scanned or image-heavy PDFs', accept: '.pdf',
+    opts: [{ k: 'q', label: 'Quality', type: 'select', def: 'm', choices: [['l', 'Smallest file'], ['m', 'Balanced'], ['h', 'Best quality']] }],
+    async run([f], o, p) {
+      const [s, q] = { l: [1, .5], m: [1.5, .7], h: [2, .85] }[o.q], doc = await getDoc(f), out = await PDFDocument.create();
+      for (let i = 1; i <= doc.numPages; i++) {
+        p(i, doc.numPages); const pg = await doc.getPage(i), b = pg.getViewport({ scale: 1 });
+        const img = await out.embedJpg(await (await blobOf(await pageCanvas(pg, s), 'image/jpeg', q)).arrayBuffer());
+        out.addPage([b.width, b.height]).drawImage(img, { x: 0, y: 0, width: b.width, height: b.height });
+      }
+      const blob = pdfBlob(await out.save()), r = [{ name: base(f) + '_compressed.pdf', blob }];
+      r.note = (blob.size < f.size ? `Saved ${Math.round(100 - blob.size / f.size * 100)}% (${kb(f.size)} → ${kb(blob.size)}).` : `Not smaller (${kb(f.size)} → ${kb(blob.size)}) – keep your original.`) + ' Pages become images, so text can no longer be selected.';
+      return r;
+    } }
+];
+
+/* ================= 3. Interface ================= */
+const CATS = [['all', 'All tools'], ['to', 'Convert to PDF'], ['from', 'Convert from PDF'], ['edit', 'Edit PDF']];
+let tool = null, files = [], carry = [], cat = 'all', outs = [];
+
+function renderHome() {
+  $('chips').innerHTML = CATS.map(([k, l]) => `<button class="chip${k === cat ? ' on' : ''}" data-c="${k}">${l}</button>`).join('');
+  $('grid').innerHTML = TOOLS.filter(t => cat === 'all' || t.cat === cat).map(t =>
+    `<button class="card" data-t="${t.id}"><span class="ico c-${t.cat}">${t.icon}</span><b>${t.name}</b><small>${t.desc}</small></button>`).join('');
+  $('carry').hidden = !carry.length;
+  $('carry').textContent = carry.length ? `📎 ${carry.map(f => f.name).join(', ')} is ready – pick the next tool to keep going.` : '';
+}
+function openTool(id) {
+  tool = TOOLS.find(t => t.id === id);
+  files = carry.length && tool.accept === '.pdf' ? [...carry] : [];   // chain: reuse the last result
+  if (files.length) carry = [];
+  $('home').hidden = true; $('work').hidden = false;
+  $('wt').textContent = tool.name; $('wd').textContent = tool.desc + '.';
+  $('file').accept = tool.accept; $('file').multiple = !!tool.multi;
+  $('opts').innerHTML = (tool.opts || []).map(o => o.type === 'check'
+    ? `<label class="chk"><input type="checkbox" id="o_${o.k}"> ${o.label}</label>`
+    : `<label>${o.label}${o.type === 'select'
+        ? `<select id="o_${o.k}">${o.choices.map(([v, l]) => `<option value="${v}"${v === o.def ? ' selected' : ''}>${l}</option>`).join('')}</select>`
+        : `<input type="text" id="o_${o.k}" placeholder="${o.ph || ''}">`}</label>`).join('');
+  $('result').innerHTML = ''; $('prog').textContent = ''; $('run').disabled = false;
+  renderFiles(); scrollTo(0, 0);
+}
+function renderFiles() {
+  $('files').innerHTML = files.map((f, i) => `<li><span class="nm">${esc(f.name)}</span><small>${kb(f.size)}</small>${tool.multi
+    ? `<button class="mini" data-a="up" data-i="${i}" aria-label="Move up">↑</button><button class="mini" data-a="down" data-i="${i}" aria-label="Move down">↓</button>` : ''}<button class="mini" data-a="rm" data-i="${i}" aria-label="Remove">✕</button></li>`).join('');
+}
+function addFiles(list) {
+  const ok = [...list].filter(f => tool.accept.split(',').includes('.' + ext(f)));
+  if (!ok.length) { $('result').innerHTML = `<p class="err">That file type isn't supported here. Use: ${tool.accept}</p>`; return; }
+  $('result').innerHTML = '';
+  files = tool.multi ? files.concat(ok) : [ok[0]];
+  renderFiles();
+}
+const getOpts = () => Object.fromEntries((tool.opts || []).map(o => [o.k, o.type === 'check' ? $('o_' + o.k).checked : $('o_' + o.k).value]));
+
+function save(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function run() {
+  $('result').innerHTML = '';
+  try {
+    if (!files.length) throw new Error('Add a file first.');
+    if (tool.min && files.length < tool.min) throw new Error(`Add at least ${tool.min} files.`);
+    $('run').disabled = true; $('prog').textContent = 'Working…';
+    const t0 = performance.now();
+    outs = await tool.run(files, getOpts(), (i, n) => { $('prog').textContent = `Working… ${i} / ${n}`; });
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    $('result').innerHTML = `<div class="out"><b>Done in ${secs}s ✨</b>${outs.note ? `<p>${esc(outs.note)}</p>` : ''}` + outs.map((o, i) =>
+      `<div class="row"><span class="nm">${esc(o.name)} <small>(${kb(o.blob.size)})</small></span><button class="dl" data-d="${i}">Download</button>${o.name.endsWith('.pdf')
+        ? `<button class="mini" data-u="${i}">Use in another tool →</button>` : ''}</div>`).join('') + '</div>';
+  } catch (e) { $('result').innerHTML = `<p class="err">${esc(e.message || e)}</p>`; }
+  $('prog').textContent = ''; $('run').disabled = false;
+}
+
+/* ---- Events ---- */
+$('chips').onclick = e => { if (e.target.dataset.c) { cat = e.target.dataset.c; renderHome(); } };
+$('grid').onclick = e => { const c = e.target.closest('.card'); if (c) openTool(c.dataset.t); };
+$('back').onclick = () => { $('work').hidden = true; $('home').hidden = false; renderHome(); };
+$('drop').onclick = () => $('file').click();
+$('drop').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } };
+$('file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+['dragover', 'dragenter'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => addFiles(e.dataTransfer.files));
+$('files').onclick = e => {
+  const { a, i } = e.target.dataset; if (!a) return;
+  const k = +i;
+  if (a === 'rm') files.splice(k, 1);
+  if (a === 'up' && k > 0) [files[k - 1], files[k]] = [files[k], files[k - 1]];
+  if (a === 'down' && k < files.length - 1) [files[k + 1], files[k]] = [files[k], files[k + 1]];
+  renderFiles();
+};
+$('run').onclick = run;
+$('result').onclick = e => {
+  const { d, u } = e.target.dataset;
+  if (d != null) save(outs[+d].blob, outs[+d].name);
+  if (u != null) { const o = outs[+u]; carry = [new File([o.blob], o.name, { type: 'application/pdf' })]; $('back').click(); }
+};
+renderHome();
+</script>
+</body>
+</html>
